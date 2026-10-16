@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StudyLink – Find your study buddy</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f3f6fb;--card:#fff;--ink:#14213d;--mute:#5b6784;--line:#dbe2ef;--brand:#2d4ef5;--brand-ink:#fff;--hot:#ff7a1a;--ok:#12a36b}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0f1526;--card:#182038;--ink:#eef2ff;--mute:#9aa7c9;--line:#2a3558;--brand:#6d86ff;--brand-ink:#0f1526;--hot:#ff9347;--ok:#37d39a}}
+*{box-sizing:border-box;margin:0}
+html,body{background:var(--bg);color:var(--ink);font-family:Figtree,system-ui,sans-serif;font-size:16px;line-height:1.5}
+body{max-width:520px;margin:0 auto;min-height:100vh;padding-bottom:84px}
+h1,h2,h3{font-family:'Bricolage Grotesque',Figtree,sans-serif;line-height:1.15}
+header{padding:20px 18px 8px;display:flex;justify-content:space-between;align-items:center}
+header h1{font-size:26px;font-weight:800}
+.streak{background:var(--card);border:2px solid var(--hot);border-radius:99px;padding:6px 14px;font-weight:700;color:var(--hot)}
+main{padding:8px 18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:12px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.avatar{width:44px;height:44px;border-radius:50%;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center;font-weight:800;flex:none}
+.tag{display:inline-block;background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:2px 10px;font-size:13px;margin:6px 6px 0 0}
+.tag.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+button{font:inherit;cursor:pointer;border:0;border-radius:12px;padding:10px 16px;font-weight:600;background:var(--brand);color:var(--brand-ink)}
+button.ghost{background:transparent;color:var(--brand);border:1.5px solid var(--brand)}
+button.done{background:var(--ok);color:#fff}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--hot);outline-offset:2px}
+input,select{font:inherit;width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);margin:4px 0 10px}
+label{font-weight:600;font-size:14px}
+.match{font-family:'Bricolage Grotesque';font-weight:800;font-size:22px;color:var(--ok)}
+.muted{color:var(--mute);font-size:14px}
+nav{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:520px;background:var(--card);border-top:1px solid var(--line);display:flex;padding:8px 8px calc(8px + env(safe-area-inset-bottom,0px))}
+nav button{flex:1;background:transparent;color:var(--mute);border-radius:10px}
+nav button.active{color:var(--brand);background:var(--bg)}
+.week{display:flex;gap:6px;margin-top:10px}
+.week span{flex:1;text-align:center;padding:8px 0;border-radius:8px;background:var(--bg);font-size:13px}
+.week span.hit{background:var(--hot);color:#fff;font-weight:700}
+.empty{text-align:center;padding:24px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header><h1>StudyLink</h1><div class="streak" id="streak">🔥 0</div></header>
+<main id="app"></main>
+<nav>
+  <button data-tab="buddies">Buddies</button>
+  <button data-tab="sessions">Sessions</button>
+  <button data-tab="streak">Streak</button>
+  <button data-tab="profile">Profile</button>
+</nav>
+<script>
+const SUBJECTS=["Maths","Physics","Accounting","Programming","Life Sciences","English"];
+const TIMES=["Morning","Afternoon","Evening"];
+const PEOPLE=[
+ {id:1,name:"Thandi M.",subjects:["Maths","Physics"],times:["Evening"],campus:"Wits"},
+ {id:2,name:"Liam K.",subjects:["Programming","Maths"],times:["Afternoon","Evening"],campus:"UJ"},
+ {id:3,name:"Naledi S.",subjects:["Accounting","English"],times:["Morning"],campus:"Wits"},
+ {id:4,name:"Ayanda P.",subjects:["Life Sciences","Physics"],times:["Afternoon"],campus:"UP"},
+ {id:5,name:"Sam D.",subjects:["Programming","English"],times:["Evening","Morning"],campus:"UJ"}
+];
+const SEED=[
+ {id:1,subject:"Maths",title:"Calculus past paper",when:"Sat 10:00",where:"Library, 2nd floor",host:"Thandi M.",joined:false},
+ {id:2,subject:"Programming",title:"Debug our group project",when:"Mon 17:30",where:"Google Meet",host:"Liam K.",joined:false},
+ {id:3,subject:"Accounting",title:"Cash flow statements",when:"Tue 08:30",where:"Study room 4",host:"Naledi S.",joined:false}
+];
+const KEY="studylink_v1";
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+S=S||{me:{name:"",subjects:[],times:[]},sessions:SEED,days:[],buddies:[]};
+let tab="buddies";
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function esc(t){return String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+function score(p){
+ const a=p.subjects.filter(x=>S.me.subjects.includes(x)).length;
+ const b=p.times.filter(x=>S.me.times.includes(x)).length;
+ const tot=Math.max(S.me.subjects.length,1)+Math.max(S.me.times.length,1);
+ return Math.round(((a*2+b)/(tot+Math.max(S.me.subjects.length,1)))*100)>100?100:Math.round(((a*2+b)/(tot+Math.max(S.me.subjects.length,1)))*100);
+}
+function today(){return new Date().toISOString().slice(0,10)}
+function streak(){
+ let n=0,d=new Date();
+ if(!S.days.includes(today()))d.setDate(d.getDate()-1);
+ while(S.days.includes(d.toISOString().slice(0,10))){n++;d.setDate(d.getDate()-1)}
+ return n;
+}
+function chips(list,sel,kind){return list.map(x=>`<button type="button" class="tag ${sel.includes(x)?'on':''}" data-chip="${kind}" data-v="${esc(x)}">${esc(x)}</button>`).join("")}
+function render(){
+ document.getElementById("streak").textContent="🔥 "+streak();
+ document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("active",b.dataset.tab===tab));
+ const el=document.getElementById("app");
+ if(tab==="buddies"){
+  if(!S.me.subjects.length){el.innerHTML=`<div class="card empty">Add your subjects and free times in Profile to see matches.<br><br><button data-go="profile">Set up profile</button></div>`;return}
+  const list=PEOPLE.map(p=>({...p,s:score(p)})).sort((a,b)=>b.s-a.s);
+  el.innerHTML=list.map(p=>{
+   const added=S.buddies.includes(p.id);
+   return `<div class="card"><div class="row"><div class="row"><div class="avatar">${esc(p.name[0])}</div><div><h3>${esc(p.name)}</h3><div class="muted">${esc(p.campus)}</div></div></div><div class="match">${p.s}%</div></div>
+   <div>${p.subjects.map(x=>`<span class="tag ${S.me.subjects.includes(x)?'on':''}">${esc(x)}</span>`).join("")}</div>
+   <div class="muted" style="margin-top:8px">Free: ${p.times.join(", ")}</div>
+   <button style="margin-top:12px" class="${added?'done':''}" data-buddy="${p.id}">${added?'Buddy added':'Add as buddy'}</button></div>`}).join("");
+ }
+ if(tab==="sessions"){
+  el.innerHTML=`<div class="card"><h3>Host a session</h3>
+  <label>Topic</label><input id="t" placeholder="e.g. Chapter 4 revision">
+  <label>Subject</label><select id="sub">${SUBJECTS.map(x=>`<option>${x}</option>`).join("")}</select>
+  <label>When</label><input id="w" placeholder="e.g. Fri 15:00">
+  <label>Where</label><input id="wh" placeholder="Library or online link">
+  <button data-add>Post session</button></div>`+
+  S.sessions.map(s=>`<div class="card"><div class="row"><h3>${esc(s.title)}</h3><span class="tag on">${esc(s.subject)}</span></div>
+  <div class="muted">${esc(s.when)} · ${esc(s.where)}</div><div class="muted">Hosted by ${esc(s.host)}</div>
+  <button style="margin-top:10px" class="${s.joined?'done':'ghost'}" data-join="${s.id}">${s.joined?'You are in':'Join session'}</button></div>`).join("");
+ }
+ if(tab==="streak"){
+  const week=[];for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);week.push(d)}
+  const done=S.days.includes(today());
+  el.innerHTML=`<div class="card"><h2>${streak()} day streak</h2><p class="muted">Study a little every day. Check in once you have studied.</p>
+  <div class="week">${week.map(d=>`<span class="${S.days.includes(d.toISOString().slice(0,10))?'hit':''}">${d.toLocaleDateString('en',{weekday:'short'}).slice(0,2)}</span>`).join("")}</div>
+  <button style="margin-top:14px" class="${done?'done':''}" data-checkin ${done?'disabled':''}>${done?'Checked in today':'I studied today'}</button></div>
+  <div class="card"><b>${S.sessions.filter(s=>s.joined).length}</b> sessions joined · <b>${S.buddies.length}</b> buddies</div>`;
+ }
+ if(tab==="profile"){
+  el.innerHTML=`<div class="card"><h2>Your profile</h2>
+  <label>Name</label><input id="nm" value="${esc(S.me.name)}" placeholder="Your name">
+  <label>Subjects you need help with</label><div>${chips(SUBJECTS,S.me.subjects,"subjects")}</div>
+  <label style="display:block;margin-top:12px">When are you free?</label><div>${chips(TIMES,S.me.times,"times")}</div>
+  <button style="margin-top:14px" data-save>Save profile</button></div>`;
+ }
+}
+document.addEventListener("click",e=>{
+ const t=e.target.closest("button");if(!t)return;
+ if(t.dataset.tab){tab=t.dataset.tab}
+ else if(t.dataset.go){tab=t.dataset.go}
+ else if(t.dataset.chip){const l=S.me[t.dataset.chip],v=t.dataset.v;const nm=document.getElementById("nm");if(nm)S.me.name=nm.value;const i=l.indexOf(v);i>-1?l.splice(i,1):l.push(v)}
+ else if(t.dataset.save){S.me.name=document.getElementById("nm").value;tab="buddies"}
+ else if(t.dataset.buddy){const id=+t.dataset.buddy;const i=S.buddies.indexOf(id);i>-1?S.buddies.splice(i,1):S.buddies.push(id)}
+ else if(t.dataset.join){const s=S.sessions.find(x=>x.id==t.dataset.join);s.joined=!s.joined}
+ else if(t.dataset.checkin){if(!S.days.includes(today()))S.days.push(today())}
+ else if(t.dataset.add){
+  const v=id=>document.getElementById(id).value.trim();
+  if(!v("t")||!v("w")){alert("Add a topic and a time.");return}
+  S.sessions.unshift({id:Date.now(),subject:v("sub"),title:v("t"),when:v("w"),where:v("wh")||"TBC",host:S.me.name||"You",joined:true});
+ }else return;
+ save();render();
+});
+render();
+</script>
+</body>
+</html>
